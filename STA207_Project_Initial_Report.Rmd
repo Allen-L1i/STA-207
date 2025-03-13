@@ -1,0 +1,733 @@
+---
+title: "STA 207 Initial Report"
+author: "Hangyu Li"
+date: "2025-02-03"
+output:
+  html_document:
+    df_print: paged
+    number_sections: yes
+    code_folding: hide
+    toc: true
+    toc_float: true
+editor_options: 
+  markdown: 
+    wrap: 72
+table: yes
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.pos = 'H')
+```
+
+# Descriptive Analysis
+
+## Data Acquisition
+
+```{r warning = FALSE, message= FALSE}
+library(AER)
+data('STAR',package = "AER")
+```
+
+From AER Package, we find the data set `STAR` and download it.
+
+## Variables Selection
+
+```{r warning = FALSE, message= FALSE}
+library(MASS)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(knitr)
+library(kableExtra)
+library(car)
+
+
+data <- STAR %>% dplyr::select(contains("1"), -c(read1, system1, school1))
+```
+
+Since our questions of interest are all about students' 1st grade scaled math score, we omit all other data about other grades and reading scores. Then to answer our questions, we need `math1` and `star1` as our response variable and factor. We also need `experience1`, `schoolid1`, `tethnicity1`, `degree1`, `ladder1` to determine every class respectively. `lunch1` is a variable related to the household income level of one student which we are interested for further research as well.
+
+## Missing Data
+
+From Fig1.1, we can find over 40% of our raw data has missing values, so it's essential for us to handle them. Otherwise, the incomplete data may lead to biased analyses and inaccurate conclusions.
+
+```{r warning = FALSE, message= FALSE}
+missing_pct <- data %>% 
+  summarise_all(~mean(is.na(.))) %>% 
+  gather(column, pct) %>% 
+  arrange(pct)
+
+ggplot(missing_pct, aes(x = reorder(column,-pct),y = pct)) + 
+  geom_bar(stat = "identity", fill = "azure3", color = "lightblue4") + 
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+  labs(x = 'Variables', y = 'Missing Proportion', title = 'Fig1.1 Proportion of Missing Data Before Cleaning') + 
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Initially, because our project primarily focuses on the math score and class type, we exclude data that misses `math1` or `star1`.
+
+```{r warning = FALSE, message= FALSE}
+data_clean <- data %>% 
+  filter(!is.na(math1)) %>% 
+  filter(!is.na(star1)) %>% 
+  mutate(star1 = factor(star1,levels = c('small','regular','regular+aide')))
+
+missing_pct <- data_clean %>% 
+  summarise_all(~mean(is.na(.))) %>% 
+  gather(column, pct) %>% 
+  arrange(pct)
+
+ggplot(missing_pct, aes(x = reorder(column,-pct),y = pct)) + 
+  geom_bar(stat = "identity", fill = "azure3", color = "lightblue4") + 
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+  labs(x = 'Variables', y = 'Missing Proportion', title = 'Fig1.2 Proportion of Missing Data after Cleaning') + 
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+After initial cleaning, Fig1.2 demonstrates that the rest of the missing values in our data set can also be removed, since `lunch1` has less than 2.5% missing values and other variables have less than 0.5%.
+
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+
+data_clean <-  data_clean %>% 
+  filter(!is.na(lunch1)) %>% 
+  filter(!is.na(tethnicity1)) %>% 
+  filter(!is.na(ladder1)) %>% 
+  filter(!is.na(degree1)) %>% 
+  filter(!is.na(experience1))  
+
+
+data_group_teacher <- data_clean %>%
+  group_by(schoolid1, star1,experience1, tethnicity1) %>%
+  summarise(
+    Class_size = sum(!is.na(math1))
+  ) %>% 
+  arrange(schoolid1)
+
+kable(head(data_group_teacher,5), caption = "Table1.1 Data Overview After Cleaning with Error (Class Level)") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"),font_size = 14) %>%
+  column_spec(1:4, bold = TRUE)
+```
+
+However, after examining the cleaned data, we notice that certain class sizes appear unusually large in Table 1.1. To solve these, we add `degree1`, `ladder1` to group our classes and obtain aggregated data as Table1.2 shows and successfully identify every teacher and their assigned class.
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+data_group_teacher <- data_clean %>%
+  group_by(schoolid1, star1,experience1, tethnicity1, degree1, ladder1) %>%
+  summarise(
+    Class_size = sum(!is.na(math1))
+  ) %>% 
+  arrange(schoolid1)
+
+kable(head(data_group_teacher,5), caption = "Table1.2 Data Overview After Cleaning (Class Level)") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"),font_size = 14) %>%
+  column_spec(1:6, bold = TRUE)
+```
+
+## Summary Measures Related to Teacher
+
+Table1.3 demonstrates 7 most common used summary measurements based on the data grouped by each teacher showing students' performance on 1st grade math.
+
+```{r warning = FALSE, message= FALSE}
+data_group_teacher <- data_clean %>%
+  group_by(schoolid1, star1, tethnicity1, experience1, degree1, ladder1) %>%
+  summarise(
+    Mean = mean(math1, na.rm = TRUE), 
+    Min =  min(math1, na.rm = TRUE),
+    Quantile25 = quantile(math1, 0.25, na.rm = TRUE),
+    Median = quantile(math1, 0.5, na.rm = TRUE),
+    Quantile75 = quantile(math1, 0.75, na.rm = TRUE),
+    Max = max(math1, na.rm = TRUE),
+    .groups = "drop" 
+  ) 
+
+
+kable(head(data_group_teacher,5), caption = "Table1.3 Summary Measures of Math Score of Students for a Certain Teacher") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"),font_size = 14) %>%
+  column_spec(1:6, bold = TRUE)
+```
+
+For our further analysis, we select mean as our summary statistics because of the predetermined score ranges. Fig1.3 presents the distribution of math score, illustrating both the raw data and the grouped mean data are all approximately normally distributed.
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+p1 <- ggplot(data_clean, aes(x = math1)) +
+  geom_histogram(fill = "azure3", color = "lightblue4") +
+  labs(x = 'Math Scaled Score', y = 'Count', title = '(i) Math Score (Student Level)') +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+p2 <- ggplot(data_group_teacher, aes(x = Mean)) +
+  geom_histogram(fill = "azure3", color = "lightblue4") +
+  labs(x = 'Mean Math Scaled Score', y = 'Count', title = '(ii) Mean Score (Class Level)') +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+p1 + p2 + plot_annotation(title = "Fig1.3 Distribution of Math Score") & 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Univariate Descriptive Statistics
+
+### Class Type
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+ggplot(data_group_teacher,aes(x = star1)) + 
+  geom_histogram(stat="count", fill = "azure3", color = "lightblue4") +
+  labs(x = 'Class Type', y = 'Count', title = 'Fig1.4 Distribution of Class Type') +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+
+```
+
+`star1` is a categorical data representing class type with 3 levels, regular, small and regular + aide. From Fig1.4, we can find though the number of classes "regular+aide" is the smallest one, the overall number of different class types remains relatively similar, from which we can conclude that class type has a balanced distribution, providing a solid basis for our further analysis.
+
+### School ID
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+ggplot(data_group_teacher,aes(x = schoolid1)) + 
+  geom_histogram(stat="count", fill = "azure3", color = "lightblue4") +
+  labs(x = 'School ID', y = 'Count', title = 'Fig1.5 Distribution of School ID') +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1)),breaks = seq(0, 13, by = 2)) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5)) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+`schoolid1` is a categorical data representing school ID. We also need to examine it as teaching levels and class numbers varies in different school. Fig1.5 introduces the distribution of class number among schools in STAR Project. Even if there are some schools with extremely large number of classes like 15, most of the schools have a balanced distribution of class numbers and ANOVA model is still applicable under this case.
+
+### Teacher Backgrounds
+
+We can combine `experience1`, `tethnicity1`, `degree1`, `ladder1` together as one single factor "Teacher Background". Let's analyze them separately first. 
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+data_group_teacher %>% ggplot(aes(x = experience1)) +
+  geom_histogram(fill = "azure3", color = "lightblue4") +
+  labs(x = 'Teacher Experience', y = 'Count', title = "Fig1.6 Distribution of Teachers' Experience") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r warning = FALSE, message= FALSE}
+data_clean %>% 
+  summarise(Mean = mean(experience1, na.rm = TRUE), 
+    Min =  min(experience1, na.rm = TRUE),
+    Quantile25 = quantile(experience1, 0.25, na.rm = TRUE),
+    Median = quantile(experience1, 0.5, na.rm = TRUE),
+    Quantile75 = quantile(experience1, 0.75, na.rm = TRUE),
+    Max = max(experience1, na.rm = TRUE),
+    .groups = "drop" ) %>% 
+  head(5) %>% 
+  kable(caption = "Table1.4 Summary Measures of Teachers' Experience") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+`experience1` is a numerical data representing years of teacher's total teaching experience. According to above (Fig1.6 & Table1.4), the distribution of teacher experience is right-skewed and long-tailed, which indicates most of the teachers are inexperienced. However, those highly experienced teachers have influenced the mean, pulling it higher than the median. 
+
+`tethnicity1`, `degree1`, `ladder1` are all categorical data representing teacher's ethnicity, highest degree of teacher and teacher's career ladder level. Fig1.7 demonstrates uneven distributions of them respectively.
+
+```{r  warning = FALSE, message= FALSE, fig.width=8}
+p1 <- ggplot(data_group_teacher, aes(x = tethnicity1)) +
+  geom_histogram(stat = "count",fill = "azure3", color = "lightblue4") +
+  labs(x = 'Teacher Ethnicity', y = 'Count', title = '(i) Teacher Ethnicity') + 
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(size = 11, hjust = 0.5)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y = element_text(size = 12))
+p2 <- ggplot(data_group_teacher, aes(x = degree1)) +
+  geom_histogram(stat = "count",fill = "azure3", color = "lightblue4") +
+  labs(x = 'Teacher Degree', y = 'Count', title = '(ii) Teacher Degree') + 
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(size = 11, hjust = 0.5)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y = element_text(size = 12))
+p3 <- ggplot(data_group_teacher, aes(x = ladder1)) +
+  geom_histogram(stat = "count",fill = "azure3", color = "lightblue4") +
+  labs(x = 'Teacher Ladder', y = 'Count', title = '(iii) Teacher Ladder') + 
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(size = 11, hjust = 0.5)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y = element_text(size = 12))
+
+(p1 | p2 | p3)+ plot_annotation(title = "Fig1.7 Distribution of Teacher Backgrounds") & 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+### Lunch - Indicator of Household Income Level
+
+`lunch1` is a categorical data representing whether the student qualified for free lunch. Whether student is qualified for FRL can serve as an indicator to show the household income level of the student and it may have an impact on their math score performance. Fig1.8 can illustrate a balanced distribution of students' lunch type. It is worth noting that Fig1.8 is based on the student-level data instead of teacher-level data used previously.
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+ggplot(data_clean,aes(x = lunch1)) + 
+  geom_histogram(stat = "count",fill = "azure3", color = "lightblue4") +
+  labs(x = 'Lunch Type', y = 'Count', title = 'Fig1.8 Distribution of Lunch Type') +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+```
+
+## Multivariate Descriptive Statistics
+
+### Outcome V.S. Class Type
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+data_group_teacher %>% 
+  ggplot(aes(x = star1,y = Mean)) +
+  geom_boxplot(fill = "azure3", color = "lightblue4") +
+  labs(x = 'Class Type', y = 'Mean Math Score', title = 'Fig1.9 Boxplot of Class Type on Mean Score') + 
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+```
+
+According to the boxplot (Fig1.9), the median line indicates that small class has a slightly higher mean math score. However, it is not sufficient for us to make a conclusion that scores vary in class types or small class type leads to best math performance because the overall distribution patterns across the three class types appear similar and need to be statistically validated later.
+
+### Outcome V.S. School ID
+
+```{r warning = FALSE, message= FALSE, fig.width=8,fig.height=4}
+data_group_teacher %>%
+  ggplot(aes(x = schoolid1,y = Mean)) +
+  geom_boxplot(fill = "azure3", color = "lightblue4") +
+  labs(x = 'School ID', y = 'Mean Math Score', title = 'Fig1.10 Boxplot of School ID on Mean Score') + 
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+Fig1.10 and Table1.5 demonstrate a relatively random distribution of mean
+score across all schools together. Since every school has all three
+kinds of class type, it implies each school has its own shared impact on
+all class types. So it is necessary to add `schoolid1` into our model.
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+data_group_teacher %>%
+  group_by(schoolid1) %>%
+  summarise(
+    Class_num = sum(!is.na(Mean)),
+    Mean = mean(Mean, na.rm = TRUE), 
+    Min =  min(Mean, na.rm = TRUE),
+    Quantile25 = quantile(Mean, 0.25, na.rm = TRUE),
+    Median = quantile(Mean, 0.5, na.rm = TRUE),
+    Quantile75 = quantile(Mean, 0.75, na.rm = TRUE),
+    Max = max(Mean, na.rm = TRUE),
+    .groups = "drop" 
+  ) %>% 
+  head(5) %>% 
+  kable(caption = "Table1.6 Summary Measures of Mean Math Score of Classes for a Certain School") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(1, bold = TRUE)
+```
+
+### Outcome V.S. Household Income Level
+
+It is worth mentioning that when we aggregate data to the lunch-level (`lunch1`), we can find students who are not qualified for FRL have a higher median score, which implies household income level may influenc students' math performance and it needs further examination as well according to the similar pattern shown in Fig1.11.
+
+```{r warning = FALSE, message= FALSE,echo =FALSE}
+data_group_lunch <- data_clean %>% 
+    group_by(schoolid1, star1, tethnicity1, experience1, degree1, ladder1,lunch1) %>%
+  summarise(
+    Num = sum(!is.na(math1)),
+    Mean = mean(math1, na.rm = TRUE), 
+    Min =  min(math1, na.rm = TRUE),
+    Quantile25 = quantile(math1, 0.25, na.rm = TRUE),
+    Median = quantile(math1, 0.5, na.rm = TRUE),
+    Quantile75 = quantile(math1, 0.75, na.rm = TRUE),
+    Max = max(math1, na.rm = TRUE),
+    .groups = "drop" 
+  ) 
+
+```
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+data_group_lunch  %>% 
+  ggplot(aes(x = lunch1,y = Mean)) +
+  geom_boxplot(fill = "azure3", color = "lightblue4") +
+  labs(x = 'Lunch Type', y = 'Mean Math Score', title = 'Fig1.11 Boxplot of Lunch Type') + 
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+```
+
+# Inferential Analysis
+
+## Model Statement
+
+Based on our previous descriptive analysis, we plan to choose a two-way ANOVA model to better answer our questions. The two-way ANOVA model is defined as follows, 
+$$
+Y_{ijk}=\mu_{..}+\alpha_i+\beta_j+\epsilon_{ijk}
+$$ 
+where the index $i$ represents the class type: small ($i=1$), regular ($i=2$), regular with aide ($i=3$), the index $j$ ($j=1,...,76$) represents the school indicator and the index $k$ ($k=1,...,n_{ij}$) represents the teacher of the $i$th class type in $j$th school.
+
+-   $Y_{ijk}$ represents the mean math score of 1st grade students of
+    the $i$th class type in $j$th school with $k$th teacher.
+-   $\mu_{..}$ represents the overall mean math score of all 1st grade
+    students.
+-   $\alpha_i$ represents the main effect of the $i$th class type.  **Constraint:** $\Sigma_{i=1}^3\alpha_i=0$
+-   $\beta_j$ represents the main effect of the $j$th school. **Constraint:** $\Sigma_{j=1}^{76}\beta_j=0$
+-   $\epsilon_{ijk}$ represents the random error of the $i$th class type in     $j$th school with $k$th teacher.
+
+## Assumptions
+
+-   **Independence Assumption:** Residuals $\{\epsilon_{ijk}\}$ are independent with each other.
+-   **Normality Assumption:** Residuals $\{\epsilon_{ijk}\}$ are normally distributed
+-   **Homoscedasticity Assumption:** The variances of residuals $\{\epsilon_{ijk}\}$ are the same across all groups.
+
+## Model Justification
+
+We need to justify whether including these two main effect terms is appropriate, as well as whether it is plausible to drop the interaction term (`star1*schoolid1`) in our model.
+
+### Main Effect Check
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+data_maineffct_star <- data_clean %>% 
+  group_by(star1) %>% 
+ summarize(
+    Mean = mean(math1),
+    SE = sd(math1) / sqrt(n()),
+    LowerCI = Mean - qt(0.975, df = n() - 1) * SE,  
+    UpperCI = Mean + qt(0.975, df = n() - 1) * SE)
+
+
+p1 <- ggplot(data_maineffct_star, aes(x = star1, y = Mean, group = 1)) +
+  geom_point(color = "darkslategray") +
+  geom_line(color = "lightblue4") +
+  geom_errorbar(aes(ymin = LowerCI, ymax = UpperCI), width = 0.1,color = "darkslategray") +
+  theme_bw() +
+  labs(title = "(i) Main Effects Plot of Class Type",
+       x = "Class Type",
+       y = "Mean Score") +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+
+data_maineffct_school <- data_clean %>% 
+  group_by(schoolid1) %>% 
+ summarize(
+    Mean = mean(math1),
+    SE = sd(math1) / sqrt(n()),
+    LowerCI = Mean - qt(0.975, df = n() - 1) * SE,  
+    UpperCI = Mean + qt(0.975, df = n() - 1) * SE)
+
+
+p2 <- ggplot(data_maineffct_school, aes(x = schoolid1, y = Mean, group = 1)) +
+  geom_point(color = "darkslategray") +
+  geom_line(color = "lightblue4") +
+  geom_errorbar(aes(ymin = LowerCI, ymax = UpperCI), width = 0.1,color = "darkslategray") +
+  theme_bw() +
+  labs(title = "(ii) Main Effects Plot of School ID",
+       x = "School ID",
+       y = "Mean Score") +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+p1+p2 + plot_layout(widths = c(1,2))+
+  plot_annotation(title = "Fig2.1 Main Effects Check") & 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+From the two main effects plots (Fig2.1), we can conclude class type and school do have observable effects on mean scores as the huge variation between different types and schools.
+
+### Interaction Check
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+data_interaction <- data_clean %>% 
+  group_by(star1,schoolid1) %>% 
+ summarize(
+    Mean = mean(math1))
+
+ggplot(data_interaction, aes(x = schoolid1, y = Mean, color = star1, group = star1)) +
+  geom_point(size = 2) +           
+  geom_line(size = 1) +            
+  labs(title = "Fig2.2 Interaction Plot Between School ID and Class Type",
+       x = "School ID",
+       y = "Mean Score",
+       color = "Class Type") + 
+  scale_color_manual(values = c('lightblue2','lightblue3','lightblue4'))+
+  theme_bw() + 
+  theme(panel.grid.major.y = element_blank(),,
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+Fig2.2 demonstrates the three lines representing for different class types are approximately parallel to each other, which means there is no strong interaction between class type and school. Thus we can drop it.  
+
+## Model Fitting
+
+### Model Coefficients
+
+```{r warning = FALSE, message= FALSE}
+data_anova <- data_group_teacher %>% 
+  dplyr::select(1:7,10)
+
+
+m_aov <- aov(Mean~star1+schoolid1,data_anova)
+model_coeff <- m_aov$coefficients
+
+kable(model_coeff,col.names = c("Term", "Value"), caption = "Table2.1 Model Coefficients") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(1, bold = TRUE) %>% 
+  scroll_box(height = '400px')
+```
+
+-   **Intercept:** It represents the mean math score for a small class in school 1.
+-   **Class Type:** The two negative result represents in the same school, no matter there is aide or not, the increase of the class size leads to the drop of the mean math score. Notably, if without aide, the decrease is even more severe.
+-   **School ID:** Due to presence of a large number of schools in STAR Project, we can get a long list of school coefficients. We can conclude that mean math score varies in different school when the classes are under the same type. So it's worth reporting the estimated coefficients for school IDs.
+
+### F-Test
+
+To answer the first question that whether there is any differences in math scaled scores in 1st grade across class types, we can apply F-Test under a significance level $\alpha$ of 0.05. For F-Test, we do not need additional assumptions from ANOVA model.
+The hypotheses are as following:
+$$
+H_0: \alpha_i =0
+$$
+$$
+H_1: not\;all\;\alpha_i\;are\;0
+$$
+
+```{r warning = FALSE, message= FALSE}
+Anova(lm(Mean~star1+schoolid1, data_anova), type=2)
+```
+From the test result, the small p-value for `star1` convinces us to reject our null hypothesis at the significance level of 0.05. So we can draw a conclusion statistically that there is a significant difference in math scaled scores in 1st grade across class types which answers our first question.
+
+## Tukey's Range Test
+
+Tukey's Range Test is specially designed for comparing all possible pairwise differences between group means while controlling for multiple comparisons. We can employ the test under a significance level $\alpha$ of 0.05 after we determined the impact of class type in order to answer the second question: which class type is associated with the highest math scaled scores in 1st grade. 
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+t <- TukeyHSD(aov(Mean ~ star1, data_anova),ordered = TRUE)
+tukey_result <- as.data.frame(t$star1)
+tukey_result$classtype <- row.names(tukey_result)
+ggplot(tukey_result, aes(x = classtype, y = diff)) +
+  geom_pointrange(aes(ymin = lwr, ymax = upr), lwd =1.5, size = 0.7, col = "lightblue4")+
+   geom_hline(yintercept=0, linetype='longdash', col = 'azure3', lwd =1) +
+  labs(x = "Class Type",
+       y = "Difference in Mean",
+       title = "Fig2.3 95% Familiy-Wise Confidence Interval of Difference in Mean") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+```
+
+We can obtain two key points from Fig2.3 that, at the significance level of 0.05:
+
+-   0 falls in the interval of regular+aide and regular, showing that whether or not there is teacher aide does not have a significant impact on students' math score.
+-   The intervals of small and regular/regular+aide are all positive, indicating that small class size does have a positively significant impact on the mean math score comparing to regular class size and will lead to the highest math scaled scores in 1st grade.
+
+# Sensitivity Analysis
+
+In this section, we will verify those assumptions made in the Inferential Analysis part and make an attempt of median instead of mean for our analysis. 
+
+## Assumptions to be Verified
+
+### Independence Assumption
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+data_aov <- data.frame(
+  fit = fitted(m_aov),
+  res = residuals(m_aov)
+)
+
+ggplot(data_aov, aes(x = fit, y = res)) +
+  geom_point(col = "lightblue4") +
+  geom_hline(yintercept = 0, color = "darkslategray", linetype = "dashed") +
+  labs(title = "Fig3.1 Fitted Value V.S. Residuals",
+       x = "Fitted Value",
+       y = "Residuals") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+```
+
+Checking the scatter of fitted value and residuals in Fig3.1, we can observe a random distribution for all dots and conclude that the independence assumption is satisfied.
+
+### Normality Assumption
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+ggplot(data_aov, aes(sample = res)) +
+  stat_qq(col = "lightblue4") + 
+  stat_qq_line(color = "darkslategray", linetype = "dashed") + 
+  labs(title = "Fig3.2 Q-Q Plot of Residuals",
+       x = "Theoretical Quantiles",
+       y = "Standardized Residuals") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+```
+
+From Q-Q plot in Fig3.2, we can find a slight thick-tail pattern, suggesting potential deviations from normality, which leads us to employ Shapiro-Wilk Test to make a clear conclusion about normality. The hypothesis is as following:
+$$
+H_0: the\;data\;is\;normally\;distributed
+$$
+
+```{r warning = FALSE, message= FALSE}
+shapiro.test(data_aov$res)
+```
+
+The small p-value of the test indicates that we can reject our $H_0$ to convince us the data is not normally distributed.
+
+```{r warning = FALSE, message= FALSE, fig.width=8,echo=FALSE}
+bc_result <- boxcox(m_aov,lambda = seq(-3, 1, by = 0.1))
+title(main = "Fig 3.3 Box-Cox Transformation for Lambda Selection")
+lambda <- bc_result$x[which.max(bc_result$y)]
+
+data_group_teacher_tf <- data_group_teacher %>% 
+  mutate(Mean_best_lambda = (Mean^lambda-1)/lambda,
+         Mean_adjust_lambda= (Mean^-1-1)/-1)
+
+```
+
+To deal with this problem, we try the Box-Cox transformation to adjust our original data. However, the best $\lambda$ $(-1.75)$ retrieved from the transformation will result a no-variation error. Hence, we set our $\lambda = -1$ and finish the transformation. The result based on the transformed data can remain consistent with our original conclusions. Therefore, concerns regarding the normality assumption can be disregarded.
+
+```{r warning = FALSE, message= FALSE, fig.width=8, error = TRUE}
+Anova(lm(Mean_best_lambda~star1+schoolid1, data_group_teacher_tf), type=2)
+```
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+Anova(lm(Mean_adjust_lambda~star1+schoolid1, data_group_teacher_tf), type=2)
+```
+
+### Homoscedasticity Assumption
+
+Based on the random pattern in Fig3.1, we can preliminarily conclude that the homoscedasticity assumption is held. To more rigorously validate it, we apply Levene Test and the hypothesis is as following:
+$$
+H_0: the\;variances\;of\;all\;groups\;are\;equal
+$$
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+leveneTest(Mean ~ star1 * schoolid1 , data_group_teacher)
+```
+
+The test result overturns our preliminary conclusion as we reject our $H_0$ and conclude that not all variances across groups are equal due to the small p-value. This violation may result from the huge differences between schools shown in Fig1.9 which will increase the variances between groups dramatically.
+
+Though we cannot verify the homoscedasticity assumption, it's still not a severe problem since ANOVA model is fairly robust to heterogeneity of variance when it is a balanced design which our model satisfies.
+
+## Median V.S. Mean
+
+We can switch our summary method from mean to median. However, it will fit a similar model and not alter our previous conclusions according to the figures and tables below.
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+ggplot(data_group_teacher, aes(x = Median)) +
+  geom_histogram(fill = "azure3", color = "lightblue4") +
+  labs(x = 'Mean Math Scaled Score', y = 'Count', title = 'Fig3.4 Distribution of Median Score by Teachers') +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+m_aov <- aov(Median~star1+schoolid1,data_anova)
+model_coeff <- m_aov$coefficients
+
+kable(model_coeff,col.names = c("Term", "Value"), caption = "Table3.1 Model Coefficients by Median") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(1, bold = TRUE) %>% 
+  scroll_box(height = '400px')
+
+```
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+Anova(lm(Median~star1+schoolid1, data_anova), type=2)
+```
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+t <- TukeyHSD(aov(Mean ~ star1, data_anova),ordered = TRUE)
+tukey_result <- as.data.frame(t$star1)
+tukey_result$classtype <- row.names(tukey_result)
+p1 <- ggplot(tukey_result, aes(x = classtype, y = diff)) +
+  geom_pointrange(aes(ymin = lwr, ymax = upr), lwd =1.5, size = 0.7, col = "lightblue4")+
+   geom_hline(yintercept=0, linetype='longdash', col = 'azure3', lwd =1) +
+  labs(x = "Class Type",
+       y = "Difference in Mean",
+       title = "(i) 95% Familiy-Wise Confidence Interval") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(size=12,hjust = 0.5)) +
+  theme(axis.text.x = element_text(angle = 30,hjust = 1,size = 8))
+
+data_aov <- data.frame(
+  fit = fitted(m_aov),
+  res = residuals(m_aov)
+)
+
+p2 <- ggplot(data_aov, aes(x = fit, y = res)) +
+  geom_point(col = "lightblue4") +
+  geom_hline(yintercept = 0, color = "darkslategray", linetype = "dashed") +
+  labs(title = "(ii) Fitted Value V.S. Residuals",
+       x = "Fitted Value",
+       y = "Residuals") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(size=12,hjust = 0.5))
+
+p3 <- ggplot(data_aov, aes(sample = res)) +
+  stat_qq(col = "lightblue4") + 
+  stat_qq_line(color = "darkslategray", linetype = "dashed") + 
+  labs(title = "(iii) Q-Q Plot of Residuals",
+       x = "Theoretical Quantiles",
+       y = "Standardized Residuals") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(size=12,hjust = 0.5))
+
+p1+ p2 + p3 +
+  plot_annotation(title = "Fig3.4 Median Results") & 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+# Acknowledgement {.unnumbered}
+
+Thank you for my friend Dae Hyeun (Issac) Cheong for his advice and hints on this report. Appreciation for my friends Shang Chen and Jun Won Choi as we discussed for our own thoughts and frameworks.
+
+# Reference {.unnumbered}
+
+Imbens, G., & Rubin, D. (2015). Stratified Randomized Experiments. In
+Causal Inference for Statistics, Social, and Biomedical Sciences: An
+Introduction (pp. 187-218). Cambridge: Cambridge University Press.
+<doi:10.1017/CBO9781139025751.010>
+
+# Session info {.unnumbered}
+
+```{r}
+sessionInfo()
+```

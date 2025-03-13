@@ -1,0 +1,1429 @@
+---
+title: "Unveiling the Link Between Class Size and Math Performance: Evidence from the STAR Project"
+author: "Hangyu Li"
+date: "03-01-2025"
+output:
+  html_document:
+    df_print: paged
+    number_sections: yes
+    code_folding: hide
+    toc: true
+    toc_float: true
+editor_options: 
+  markdown: 
+    wrap: 72
+table: yes
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.pos = 'H')
+```
+
+# Abstract
+
+This report examines the relationship between class size and math performance in 1st grade using data from the STAR Project. We employ a comprehensive analysis that integrates descriptive statistics, three-way ANOVA, and post-hoc tests to evaluate differences in math scores across three class types—small, regular, and regular with aide—while controlling for school-level and socioeconomic factors. Our findings reveal that small classes are associated with significantly higher mean math scores compared to larger classes. Furthermore, incorporating lunch type, an indicator of household income, into the model substantially improves its explanatory power, suggesting that socioeconomic status is an important determinant of academic performance. In contrast, additional teacher background variables do not significantly enhance model performance, implying that these factors are relatively non-significant across class types. Analysis of variance within classes further indicates that, although small classes boost overall performance, they may also widen the achievement gap among students. These results provide robust empirical support for policies promoting smaller class sizes as a means to improve early academic outcomes, while highlighting the need to address socioeconomic disparities in education.
+
+# Introduction
+
+As the former president Barack Obama once noted, the best way to fight
+poverty is to provide the next generation with quality education,
+Education serves as a critical foundation of fostering economic growth,
+promoting social development, and maintaining long-term stability across
+the world. Since the education kids received shapes the future of a
+country, investigating the factors that will impact students' academic
+performance is of vital importance.
+
+While among all factors influencing educational outcome, class size has
+long been a widely discussed issue since smaller class sizes are often
+believed to improve student learning by enabling more individualized
+attention, better classroom management, and stronger student-teacher
+interactions (Finn & Achilles, 1999). However, there was not enough
+valid causal evidence can separate class size from all other impacts.
+
+In order to rigorously investigate the impact of class size on student
+academic performance in early grades, we focus on the famous
+large-scaled experiment conducted in Tennessee during the 1980s called
+Student/Teacher Achievement Ratio (STAR) project.
+
+This report aims to analyze the STAR dataset and address the following
+key questions:
+
+1.  Are there any differences in math scaled scores in 1st grade across
+    class types?
+2.  Which class type is associated with the highest math scaled scores
+    in 1st grade?
+
+By answering these two questions, we can understand the meaning of STAR
+step by step and fully examine whether class size is a critical factor
+determining young students' performance statistically.
+
+# Background
+
+The data we used in the report is from the STAR Project dataset,
+obtained from [Harvard
+Dataverse](https://dataverse.harvard.edu/dataset.xhtml?persistentId=hdl:1902.1/10766).
+The four-year randomized and longitudinal study launched by the
+Tennessee State Department of Education in 1985 is one of the most
+influential and comprehensive educational experiments in the United
+States (Mosteller, 1995).
+
+## Design of STAR
+
+The target population of the STAR project consisted of students enrolled
+in public schools across Tennessee which aligns with the initial focus
+of STAR project - the relationship between class size and academic
+performance of kids from kindergarten to 3rd grade (K-3). To ensure a
+diverse sample and cover different geographic areas, socioeconomic
+backgrounds and school types, it invited all Tennessee schools with K-3
+classes to participate. Eventually, 11601 students from79 schools were
+included in the project (Achilles, 2012).
+
+Beginning in kindergarten, students were randomly assigned to one of
+three class types: ‘Small’ classes (about 15-17 students), ‘Regular’
+classes (about 22-25 students), and ‘Regular with a full-time Aide’
+classes (about 22-25 students) and measured annually via Stanford
+Achievement Tests which is a nationally standardized assessment of
+academic achievement. Furthermore, students remained in their originally
+assigned class type from kindergarten through third grade, keeping
+consistency in treatment over time. All of the within-school
+controlled-randomization designs enhanced the robustness which is
+helpful for minimizing the selection bias across schools (Finn &
+Achilles, 1999).
+
+More rigorous designs of the project are as following:
+
+-   Each school included in the study had to have a large enough student
+    body to form at least one of each of the three class types. This
+    controls differences among schools like resources, leadership,
+    facilities, ensuring that class-size effects could not be attributed
+    to these factors.
+
+-   79 schools in 42 systems met the within-school design requirement,
+    and the STAR sample was nearly 7,000 students per grade level. The
+    large sample size lent credibility to the results and allowed for
+    reduced sample size due to inevitable student mobility.
+
+-   Schools from inner-city, rural, urban, and suburban locations were
+    included. This ensured that the sample reflected students from
+    various ethnic backgrounds and income levels, enhancing the
+    generalizability of the findings.
+
+-   Investigators followed the standard procedures for confidentiality
+    and human subjects’ research which ensured no individual’s
+    demographic or test score data could be discerned.
+
+-   No children were to receive fewer services than normal because of
+    the experiment. Thus, the study did not “harm” any children.
+
+-   An outside consultant was contracted to perform all primary
+    statistical analyses. It is an additional safeguard to the possible
+    biased result.
+
+## Variables Dictionary
+
+```{r warning = FALSE, message= FALSE,echo=FALSE, include=FALSE}
+library(haven)
+data <- read_sav('STAR_Students.sav')
+```
+
+Since our questions of interest are all about students' 1st grade scaled
+math score, we omit all other data about other grades and reading
+scores. Then to answer our questions, we need `math1` and `star1` as our
+response variable and factor. We also need `schoolid1`, `teacherid1` to
+identify every class respectively. `lunch1` is a variable related to the
+household income level of one student which we are interested for
+further research. In initial report, we highlighted several factors
+related to teachers' backgrounds including `experience1`, `tgender1`,
+`tethnicity1`, `degree1` and `ladder1`, which could potentially
+contribute to explaining student performance and are therefore
+considered for inclusion in the analysis as well.
+
+```{r warning = FALSE, message= FALSE,echo=FALSE}
+library(MASS)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(knitr)
+library(kableExtra)
+library(car)
+library(ggalluvial)
+library(forcats)
+library(broom)
+library(gridExtra)
+
+data_select <- data %>% 
+  dplyr::select(FLAGSG1, flagg1, g1classtype, g1schid, g1tchid, g1tgen, g1trace, g1thighdegree, g1tcareer, g1tyears ,g1tmathss ,g1freelunch) %>% 
+  mutate(
+    g1classtype = as.factor(g1classtype),
+    g1schid = as.factor(g1schid),
+    g1tchid = as.factor(g1tchid),
+    g1tgen = as.factor(g1tgen),
+    g1trace = as.factor(g1trace),
+    g1thighdegree = as.factor(g1thighdegree),
+    g1tcareer = as.factor(g1tcareer),
+    g1freelunch = as.factor(g1freelunch)
+  ) %>% 
+  set_names(c('FLAGSG1','flagg1','star1','schoolid1','teacherid1','tgender1','tethnicity1','degree1','ladder1','experience1','math1','lunch1'))
+```
+
+```{r warning = FALSE, message= FALSE,echo=FALSE}
+var_dic <- data.frame(
+  Variable = c('star1', 'schoolid1', 'teacherid1', 'tgender1', 'tethnicity1', 
+               'degree1', 'ladder1', 'experience1', 'math1', 'lunch1'),
+  Description = c(
+    'Factor of Class Type (1 = Small, 2 = Regular, 3 = Regular with Aide)',
+    'Factor of School ID (Unique Identifier for Schools)',
+    'Factor of Teacher ID (Unique Identifier for Teachers)',
+    'Factor of Teacher Gender (1 = Male, 2 = Female)',
+    'Factor of Teacher Ethnicity (1 = Caucasian, 2 = African-American)',
+    'Factor of Teacher Degree (2 = Bachelor, 3 = Master, 5 = Specialist, 6 = Ph.D)',
+    'Factor of Teacher Career Ladder (1 = Level1, 2 = Level2, 3 = Level3, 4 = Apprentice, 5 = Probation, 6 = Noladder)',
+    'Years of Teacher Experience',
+    'Student\'s 1st Grade Math Score',
+    'Factor of Lunch Type (1 = Qualified, 2 = Not Qualified)'
+  )
+)
+
+kable(var_dic, format = "html", caption = "Table3.1 Variable Dictionary", align = 'l') %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"),font_size = 14)
+```
+
+## Criticism on STAR Design
+
+As we have mentioned in the **Design of STAR** section, the project
+intended for students to remain in their original class to preserve its
+randomness. However, after examining the data, we can find students were
+actually switching between different class types from ***Fig3.1***. The
+`Unknown` part of students means the students that were not initially
+selected by STAR project. The gap between the intended design and the
+actual implementation leaves potential threats for the project's
+validity.
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+
+data_alluvium <- subset(data, select = c(gkclasstype, g1classtype, g2classtype, g3classtype))
+
+class_levels <- c("small", "regular", "regular-aide")
+data_alluvium <- data_alluvium %>%
+    mutate(across(everything(), 
+                  ~factor(as.numeric(.), levels = c(1, 2, 3), 
+                          labels = class_levels))) %>%
+    mutate(across(everything(), 
+                  ~fct_explicit_na(., na_level = "Unknown")))
+
+data_summary <- data_alluvium %>%
+    count(gkclasstype, g1classtype, g2classtype, g3classtype, name = "Freq") %>%
+    mutate(path_id = row_number())  
+
+data_long <- data_summary %>%
+    pivot_longer(cols = starts_with("g"), names_to = "grade", values_to = "class")
+
+data_long$grade <- factor(data_long$grade,
+            levels = c("gkclasstype", "g1classtype", "g2classtype","g3classtype"),
+            labels = c("Kindergarten", "Grade 1", "Grade 2", "Grade 3"))
+
+ggplot(data_long, aes(x = grade, stratum = class, alluvium = path_id, y = Freq, fill = class)) +
+    geom_flow(stat = "alluvium", alpha = 0.7) + 
+    geom_stratum() + 
+    scale_fill_manual(values = c("gold2", "skyblue2", "darkseagreen3", "lightcoral")) +
+    theme_minimal() +
+    labs(title = "Fig3.1: Alluvial Plot of Students' Transfer", x = "Grade", y = "") +
+    theme(legend.position = "right",
+          axis.text.x = element_text(hjust = 0.5),
+          axis.text.y = element_blank(),  
+          axis.ticks.y = element_blank(), 
+          axis.ticks.x = element_blank(), 
+          panel.grid.major.y = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          plot.title = element_text(hjust = 0.5))
+
+```
+
+To understand the cause, it appears to be partially driven by parental
+influence, as some parents actively intervened to move their children
+into what they perceived to be more desirable classroom types (Hanushek,
+1999). Another important factor contributing to student switching is
+school- or teacher-initiated reassignments since some schools
+particularly those small ones made informal adjustments after the school
+year began to balance class sizes, accommodate new enrollments, or
+address specific classroom dynamics (Finn & Achilles, 1999).
+
+## Caveats in Initial Reports
+
+The biggest caveat in the initial report is we failed to consider enough
+variables that may affect students' performance in 1st grade.
+
+Firstly, the factor representing whether the student qualified for free
+lunch (`lunch1`), which can serve as an indicator of household income
+level of one student, was not thoroughly examined at the descriptive
+level, nor was its potential relationship with math performance. The
+missing of lunch type led to biased estimates as socioeconomic factors
+are known to significantly influence academic achievement (Sirin, 2005).
+
+In addition, while basic descriptive analysis was conducted for teacher
+background factors (`experience1`, `tgender1`, `tethnicity1`, `degree1`,
+`ladder1`), we did not systematically examine how these variables relate
+to student math performance. The omission may pose risks on leaving
+unexplained variance that could have been accounted for.
+
+# Descriptive Analysis
+
+## Missing Data
+
+As shown in ***Fig4.1***, we can find over 40% of our raw data has
+missing values before any cleaning procedures, so it's essential for us
+to apply appropriate methods to handle them. Otherwise, the incomplete
+data may lead to biased analyses and inaccurate conclusions.
+
+```{r warning = FALSE, message= FALSE,echo=FALSE}
+data_clean1 <- data_select %>% 
+  filter(FLAGSG1 == 1 & flagg1 == 1 & !is.na(math1)) %>% 
+  select(-FLAGSG1,-flagg1)
+```
+
+```{r warning = FALSE, message= FALSE,echo=FALSE}
+data_clean <-  data_clean1 %>% 
+  filter(!is.na(lunch1)) %>% 
+  filter(!is.na(tethnicity1)) %>% 
+  filter(!is.na(ladder1)) %>% 
+  filter(!is.na(degree1)) %>% 
+  filter(!is.na(experience1))  
+```
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+not_missing_pct1 <- data_select %>% 
+  select(-FLAGSG1,-flagg1) %>% 
+  summarise_all(~mean(!is.na(.))) %>% 
+  gather(column, pct) %>% 
+  arrange(pct) %>%
+  mutate(stage = "Before Cleaning")
+
+
+not_missing_pct2 <- data_clean1 %>% 
+  summarise_all(~mean(!is.na(.))) %>% 
+  gather(column, pct) %>% 
+  arrange(pct) %>%
+  mutate(stage = "After Cleaning")
+
+missing_combined <- bind_rows(not_missing_pct2, not_missing_pct1)
+
+ggplot(missing_combined, aes(x = reorder(column, -pct), y = pct, fill = stage)) +
+  geom_bar(stat = "identity", 
+           position = "identity"
+  ) +
+  scale_fill_manual(values = c("Before Cleaning" = "azure4", 
+                               "After Cleaning"  = "azure3")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  labs(x = "Variables", 
+       y = "Not Missing Proportion", 
+       title = "Fig4.1 Proportion of Not Missing Data") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Since the primary focus of our project is the relationship between math
+score and class type, data missing `math1` or `star1` means that these
+students didn't take the math exam or attend the STAR classes for some
+reasons, so that these observations should be removed.
+
+After initial cleaning, the post-cleaning figure demonstrates that the
+rest of missing values are minimal can also be removed. Specially,
+`lunch1` has less than 2.5% missing values and all other variables have
+less than 0.5%, so they can be deleted without significantly
+compromising the sample size.
+
+## Summary Measures Related to Teacher
+
+***Table4.1*** demonstrates 6 most common-used summary measurements
+based on the data grouped by each teacher showing students' performance
+on 1st grade math.
+
+```{r warning = FALSE, message= FALSE}
+data_group_teacher <- data_clean %>%
+  group_by(schoolid1, star1, teacherid1) %>%
+  summarise(
+    Mean = mean(math1, na.rm = TRUE), 
+    Min =  min(math1, na.rm = TRUE),
+    Quantile25 = quantile(math1, 0.25, na.rm = TRUE),
+    Median = quantile(math1, 0.5, na.rm = TRUE),
+    Quantile75 = quantile(math1, 0.75, na.rm = TRUE),
+    Max = max(math1, na.rm = TRUE),
+    .groups = "drop" 
+  ) 
+
+
+kable(head(data_group_teacher,5), caption = "Table4.1 Summary Measures of Math Score of Students for a Certain Teacher") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"),font_size = 14) %>%
+  column_spec(1:3, bold = TRUE)
+```
+
+For our further analysis, we select mean as our summary statistics
+because of the predetermined score ranges of SAT. ***Fig4.2*** presents
+the distribution of math score, illustrating both the raw data and the
+grouped mean data are all approximately normally distributed.
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+p1 <- ggplot(data_clean, aes(x = math1)) +
+  geom_histogram(fill = "azure3", color = "lightblue4") +
+  labs(x = 'Math Scaled Score', y = 'Count', title = '(i) Math Score (Student Level)') +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+p2 <- ggplot(data_group_teacher, aes(x = Mean)) +
+  geom_histogram(fill = "azure3", color = "lightblue4") +
+  labs(x = 'Mean Math Scaled Score', y = 'Count', title = '(ii) Mean Score (Class Level)') +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+p1 + p2 + plot_annotation(title = "Fig4.2 Distribution of Math Score") & 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Possibly Relevant Variables
+
+In this Section, we will explore some basic variables and those variables that raise our primary interests. After initial analysis and examination, we can select appropriate variables to include in our model in the following **Inferential Analysis** section.
+
+### Class Type
+
+
+From ***Appendix*** ***Fig1 (i)***, we can find though the number of
+classes "regular+aide" is the smallest one, the overall number of
+different class types remains relatively similar, from which we can
+conclude that class type has a balanced distribution, providing a solid
+basis for our further analysis.
+
+According to the boxplot (***Fig4.3 (i)***), the median line indicates
+that small class has a slightly higher mean math score. However, it is
+not sufficient for us to make a conclusion that scores vary in class
+types or small class type leads to best math performance because the
+overall distribution patterns across the three class types appear
+similar and need to be statistically validated later.
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+p1 <- data_group_teacher %>% 
+  ggplot(aes(x = star1,y = Mean)) +
+  geom_boxplot(fill = "azure3", color = "lightblue4") +
+  labs(x = 'Class Type', y = 'Mean Math Score', title = '(i) Class Type') + 
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+
+p2 <- data_group_teacher %>%
+  ggplot(aes(x = schoolid1,y = Mean)) +
+  geom_boxplot(fill = "azure3", color = "lightblue4") +
+  labs(x = 'School ID', y = 'Mean Math Score', title = '(ii) School ID') + 
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+p1+p2 + plot_layout(widths = c(1,2)) + plot_annotation(title = "Fig4.3 Boxplot of Vars on Mean Score") & 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+### School ID
+
+We also need to examine `schoolid1` as teaching levels and class numbers
+varies in different school. The bar plot (See ***Appendix*** ***Fig1
+(ii)***) introduces the distribution of class number among schools in
+STAR Project. Even if there are some schools with extremely large number
+of classes like 12, most of the schools have a balanced distribution of
+class numbers and ANOVA model is still applicable under this case.
+
+***Fig4.3 (ii)*** and ***Appendix Table1*** demonstrate a relatively
+random distribution of mean score across all schools together. Since
+every school has all three kinds of class type, it implies each school
+has its own shared impact on all class types. So it is necessary to add
+`schoolid1` into our model.
+
+### Lunch - Indicator of Household Income Level
+
+The bar plot (See ***Table4.2***) can illustrate a balanced
+distribution of students' lunch type across class types. Particularly, this table is based
+on the student-level data instead of teacher-level data used previously.
+
+```{r warning = FALSE, message= FALSE,echo =FALSE}
+data_group_lunch <- data_clean %>% 
+    group_by(schoolid1, star1, teacherid1,lunch1) %>%
+  summarise(
+    Mean = mean(math1, na.rm = TRUE)
+  ) 
+```
+
+```{r warning = FALSE, message= FALSE}
+table_lunch <- data_group_lunch %>%
+  group_by(star1, lunch1) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(star1) %>%
+  mutate(prop = n / sum(n)) %>%
+  select(-n) %>% 
+  pivot_wider(id_cols = star1, names_from = lunch1, values_from = prop)
+
+table_lunch[is.na(table_lunch)] <- 0
+
+table_lunch <- table_lunch %>%
+  mutate(across(where(is.numeric), ~ paste0(round(.x * 100, 1), "%")))
+
+
+kable(table_lunch, digits = 3, caption = "Table4.2 Proportion of Lunch Type by Class Type")  %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"),font_size = 14) %>%
+  column_spec(1, bold = TRUE)
+```
+
+```{r warning = FALSE, message= FALSE}
+model_base <- lm(Mean ~ star1 + schoolid1, data = data_group_lunch)
+model_full <- lm(Mean ~ star1 + schoolid1 + lunch1, data = data_group_lunch)
+
+anova_result <- anova(model_base, model_full)
+
+anova_df <- as.data.frame(anova_result)
+
+colnames(anova_df) <- c("Residual DF", "RSS", "DF", "Sum of Squares", "F", "p.value")
+anova_df$p.value <- formatC(anova_df$p.value, format = "e", digits = 2)
+
+kable(anova_df, format = "html", caption = "Table4.3 Analysis of Variance Table (Lunch)", row.names = TRUE) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+
+```
+
+
+It is worth mentioning that when We set the base model with variables `star1`, `schoolid1` and add lunch type to the full model. The small p-value
+($1.49\times10^{-32}$) in ***Table4.3*** indicates that at the significance level of 0.05, including
+lunch type does significantly improve the model’s
+explanatory power. 
+All of the small p-values and the moderate $R^2$ in The linear regression between the residuals of base
+model and lunch type also confirms the conclusion (***Table4.4***).
+
+```{r warning = FALSE, message= FALSE}
+data_group_lunch$residuals <- resid(model_base)
+
+model_residual <- lm(residuals ~lunch1, data = data_group_lunch)
+
+coef_table <- summary(model_residual)$coefficients
+
+p_value_df <- data.frame(
+  Variable = rownames(coef_table),
+  p_value = coef_table[, "Pr(>|t|)"]
+)
+
+r2_df <- data.frame(
+  Variable = c("R-squared", "Adjusted R-squared"),
+  p_value = c(summary(model_residual)$r.squared, summary(model_residual)$adj.r.squared)
+)
+
+p_value_df <- rbind(p_value_df, r2_df)
+
+rownames(p_value_df) <- NULL
+
+p_value_df$Variable <- ifelse(p_value_df$Variable %in% c("R-squared", "Adjusted R-squared"),
+                              cell_spec(p_value_df$Variable, bold = TRUE),
+                              p_value_df$Variable)
+
+kable(p_value_df, format = "html", escape = FALSE,caption = "Table4.4 p-values and Model Fit Statistics between Residuals of Base Model and Lunch Types", digits = 2) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+### Teacher Backgrounds
+
+In common sense, teaching quality plays a critical role in shaping
+students' academic performance. However, research from the STAR Project
+(Krueger, 1999; Mosteller, 1995) suggests that while class size strongly
+influences student performance, teacher background factors like
+experience (`experience1`), gender (`tgender1`), ethnicity
+(`tethnicity1`), degree (`degree1`) and career ladder (`ladder1` ) show
+little consistent effect. So we will evaluate whether teacher background
+should be included in the final model explaining student math scores.
+
+
+::: {.columns}
+
+::: {.column width="54%"}
+
+```{r warning = FALSE, message= FALSE,echo =FALSE}
+data_group_teacher_bg <- data_clean %>% 
+    group_by(schoolid1, star1, teacherid1,lunch1,tgender1,tethnicity1,degree1,ladder1,experience1) %>%
+  summarise(
+    Mean = mean(math1, na.rm = TRUE)
+  ) 
+```
+
+```{r warning = FALSE, message= FALSE, fig.width=6, fig.height=4}
+p1 <- data_group_teacher_bg %>%
+  ggplot(aes(x = experience1, color = factor(star1))) +
+  geom_density(size = 1) + 
+  labs(x = "Teacher Experience",
+       y = "Density",
+       title = "Fig4.4 Teacher Experience Density by Class Type") +
+  theme_bw() +
+  scale_color_manual(values = c("1" = "lightblue2",
+                                "2" = "lightblue3",
+                                "3" = "lightblue4"),
+                     name = "Class Type") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank()
+  )
+
+
+print(p1)
+
+
+
+```
+
+:::
+
+::: {.column width="23%"}
+
+```{r warning = FALSE, message= FALSE}
+table_tgender <- data_group_teacher_bg %>%
+  group_by(star1, tgender1) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(star1) %>%
+  mutate(prop = n / sum(n)) %>%
+  select(-n) %>% 
+  pivot_wider(id_cols = star1, names_from = tgender1, values_from = prop)
+
+table_tgender[is.na(table_tgender)] <- 0
+
+table_tgender <- table_tgender %>%
+  mutate(across(where(is.numeric), ~ paste0(round(.x * 100, 1), "%")))
+
+
+kable(table_tgender, digits = 3, caption = "Table4.5 Proportion of Teacher Gender by Class Type")  %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"),font_size = 14) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(1, width = "1.5cm") %>%
+  column_spec(2, width = "1.5cm") %>%  
+  column_spec(3, width = "1.5cm")      
+
+```
+
+:::
+
+::: {.column width="23%"}
+
+```{r warning = FALSE, message= FALSE}
+
+table_tethnicity <- data_group_teacher_bg %>%
+  group_by(star1, tethnicity1) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(star1) %>%
+  mutate(prop = n / sum(n)) %>%
+  select(-n) %>%
+  pivot_wider(id_cols = star1, names_from = tethnicity1, values_from = prop)
+
+table_tethnicity[is.na(table_tethnicity)] <- 0
+
+table_tethnicity <- table_tethnicity %>%
+  mutate(across(where(is.numeric), ~ paste0(round(.x * 100, 1), "%")))
+
+
+kable(table_tethnicity, digits = 3, caption = "Table4.6 Proportion of Teacher Ethnicity by Class Type")  %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"),font_size = 14) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(1, width = "1.5cm") %>%
+  column_spec(2, width = "1.5cm") %>%  
+  column_spec(3, width = "1.5cm")     
+
+
+
+
+
+```
+
+:::
+
+::: {.columns}
+::: {.column width="50%"} 
+
+```{r warning = FALSE, message= FALSE, fig.width=6, fig.height=4}
+p5 <- data_group_teacher_bg %>% ggplot(aes(x = star1, fill = ladder1)) +
+  geom_bar(position = "fill") +
+  labs(x = "Class Type", y = "Proportion", fill = "Ladder", title = "Fig4.5 Teacher Ladder Distribution by Class Type") +
+  theme_bw() +
+  scale_fill_manual(values = c("1" = "lightblue1", "2" = "lightblue2", "3" = "lightblue3", "4" = "lightblue4", "5" = "darkslategray4", "6" = "azure4")) +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5))
+
+print(p5)
+```
+
+:::
+ 
+
+::: {.column width="10%"}
+
+
+:::
+
+::: {.column width="30%"}
+```{r warning = FALSE, message= FALSE}
+
+table_degree <- data_group_teacher_bg %>%
+  group_by(star1, degree1) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(star1) %>%
+  mutate(prop = n / sum(n)) %>%
+  select(-n) %>%
+  pivot_wider(id_cols = star1, names_from = degree1, values_from = prop)
+
+table_degree[is.na(table_degree)] <- 0
+
+table_degree <- table_degree %>%
+  mutate(across(where(is.numeric), ~ paste0(round(.x * 100, 1), "%")))
+
+
+kable(table_degree, digits = 3, caption = "Table4.7 Proportion of Teacher Gender by Class Type")  %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"),font_size = 14) %>%
+  column_spec(1, bold = TRUE)
+```
+:::
+
+::: {.column width="10%"}
+
+::: 
+
+::: 
+
+
+Following the same procedures we have done in **Lunch** Section, as illustrated in ***Fig4.4, Fig4.5*** and ***Table4.5*** to ***Table4.7***, teacher backgrounds factors are distributed evenly across the three class types, suggesting that differences in teacher characteristics are unlikely to introduce systematic bias. To verify it, We fit
+the base model with variables `star1`, `schoolid1`, `lunch1` and add all
+of the teacher background factors to the full model. The big p-value
+($0.48$) shown in ***Table4.8*** indicates that at the significance level of 0.05, including
+teacher background can not significantly improve the model’s
+explanatory power. Moreover, the subsequent linear regression between the residuals of base
+model and teacher background factors supports the conclusion since
+all of the p-values are large and the $R^2$ is extremely small (See
+***Appendix Table2***).
+
+```{r warning = FALSE, message= FALSE}
+model_base <- lm(Mean ~ star1 + schoolid1 + lunch1, data = data_group_teacher_bg)
+model_full <- lm(Mean ~ star1 + schoolid1 + lunch1 + tgender1 + tethnicity1 + degree1 + ladder1 + experience1, data = data_group_teacher_bg)
+
+anova_result <- anova(model_base, model_full)
+
+anova_df <- as.data.frame(anova_result)
+
+colnames(anova_df) <- c("Residual DF", "RSS", "DF", "Sum of Squares", "F", "p-value")
+
+kable(anova_df, format = "html", caption = "Table4.8 Analysis of Variance Table (Teacher Backgrounds)", row.names = TRUE) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+
+```
+
+# Inferential Analysis
+
+## Model Statement
+
+Based on our previous descriptive analysis, we plan to choose a
+three-way ANOVA model to better answer our questions. The three-way
+ANOVA model is defined as follows, $$
+Y_{ijkl}=\mu_{...}+\alpha_i+\beta_j+\gamma_k+\epsilon_{ijkl}
+$$ where the index $i$ represents the class type: small ($i=1$), regular
+($i=2$), regular with aide ($i=3$), the index $j$ ($j=1,...,76$)
+represents the school indicator, the index $k$ represents the free lunch
+qualification status: qualified ($k=1$), not qualified ($k=2$) and the
+index $l$ ($k=1,...,n_{ijk}$) represents the teacher of student with
+$k$th lunch group and the $i$th class type in $j$th school.
+
+-   $Y_{ijkl}$ represents the mean math score of 1st grade students of
+    the $i$th class type in $j$th school and $k$th lunch group with
+    $l$th teacher.
+-   $\mu_{...}$ represents the overall mean math score of all 1st grade
+    students.
+-   $\alpha_i$ represents the main effect of the $i$th class type.
+    **Constraint:** $\Sigma_{i=1}^3\alpha_i=0$
+-   $\beta_j$ represents the main effect of the $j$th school.
+    **Constraint:** $\Sigma_{j=1}^{76}\beta_j=0$
+-   $\gamma_k$ represents the main effect of the $k$th lunch group.
+    **Constraint:** $\Sigma_{k=1}^{2}\gamma_k=0$
+-   $\epsilon_{ijkl}$ represents the random error of the $i$th class
+    type in $j$th school and $k$th lunch group with $l$th teacher.
+
+## Assumptions
+
+-   **Independence Assumption:** Residuals $\{\epsilon_{ijkl}\}$ are
+    independent with each other.
+-   **Normality Assumption:** Residuals $\{\epsilon_{ijkl}\}$ are
+    normally distributed
+-   **Homoscedasticity Assumption:** The variances of residuals
+    $\{\epsilon_{ijkl}\}$ are the same across all groups.
+
+## Model Justification
+
+We need to justify whether including these three main effect terms is
+appropriate, as well as whether it is plausible to drop interaction
+terms (`star1*schoolid1`, `star1*lunch1` and `lunch1*schoolid1`) in our
+model.
+
+### Main Effect Check
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+data_maineffct_star <- data_clean %>% 
+  group_by(star1) %>% 
+ summarize(
+    Mean = mean(math1),
+    SE = sd(math1) / sqrt(n()),
+    LowerCI = Mean - qt(0.975, df = n() - 1) * SE,  
+    UpperCI = Mean + qt(0.975, df = n() - 1) * SE)
+
+
+p1 <- ggplot(data_maineffct_star, aes(x = star1, y = Mean, group = 1)) +
+  geom_point(color = "darkslategray") +
+  geom_line(color = "lightblue4") +
+  geom_errorbar(aes(ymin = LowerCI, ymax = UpperCI), width = 0.1,color = "darkslategray") +
+  theme_bw() +
+  labs(title = "(i) Class Type",
+       x = "Class Type",
+       y = "Mean Score") +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+
+data_maineffct_school <- data_clean %>% 
+  group_by(schoolid1) %>% 
+ summarize(
+    Mean = mean(math1),
+    SE = sd(math1) / sqrt(n()),
+    LowerCI = Mean - qt(0.975, df = n() - 1) * SE,  
+    UpperCI = Mean + qt(0.975, df = n() - 1) * SE)
+
+
+p2 <- ggplot(data_maineffct_school, aes(x = schoolid1, y = Mean, group = 1)) +
+  geom_point(color = "darkslategray") +
+  geom_line(color = "lightblue4") +
+  geom_errorbar(aes(ymin = LowerCI, ymax = UpperCI), width = 0.1,color = "darkslategray") +
+  theme_bw() +
+  labs(title = "(iii) School ID",
+       x = "School ID",
+       y = "Mean Score") +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+data_maineffct_lunch <- data_clean %>% 
+  group_by(lunch1) %>% 
+ summarize(
+    Mean = mean(math1),
+    SE = sd(math1) / sqrt(n()),
+    LowerCI = Mean - qt(0.975, df = n() - 1) * SE,  
+    UpperCI = Mean + qt(0.975, df = n() - 1) * SE)
+
+
+p3 <- ggplot(data_maineffct_lunch, aes(x = lunch1, y = Mean, group = 1)) +
+  geom_point(color = "darkslategray") +
+  geom_line(color = "lightblue4") +
+  geom_errorbar(aes(ymin = LowerCI, ymax = UpperCI), width = 0.1,color = "darkslategray") +
+  theme_bw() +
+  labs(title = "(ii) Lunch Type",
+       x = "Lunch Type",
+       y = "Mean Score") +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+(p1 | p3) / p2 +
+  plot_annotation(title = "Fig5.1 Main Effects Check") & 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+From the three main effects plots (***Fig5.1***), we can conclude class
+type ,school and lunch type do have observable effects on mean scores as
+the huge variation between different types and schools.
+
+### Interaction Check
+
+```{r warning = FALSE, message= FALSE, fig.width=8,fig.height=8, fig.align='center'}
+data_interaction_class_school <- data_clean %>% 
+  group_by(star1,schoolid1) %>% 
+ summarize(
+    Mean = mean(math1))
+
+p1 <- ggplot(data_interaction_class_school, aes(x = schoolid1, y = Mean, color = star1, group = star1)) +
+  geom_point(size = 2) +           
+  geom_line(size = 1) +            
+  labs(title = "(i) School ID & Class Type",
+       x = "School ID",
+       y = "Mean Score",
+       color = "Class Type") + 
+  scale_color_manual(values = c('lightblue2','lightblue3','lightblue4'))+
+  theme_bw() + 
+  theme(panel.grid.major.y = element_blank(),,
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+data_interaction_lunch_school <- data_clean %>% 
+  group_by(lunch1,schoolid1) %>% 
+ summarize(
+    Mean = mean(math1))
+
+p2 <- ggplot(data_interaction_lunch_school, aes(x = schoolid1, y = Mean, color = lunch1, group = lunch1)) +
+  geom_point(size = 2) +           
+  geom_line(size = 1) +            
+  labs(title = "(ii) School ID & Lunch Type",
+       x = "School ID",
+       y = "Mean Score",
+       color = "Lunch Type") + 
+  scale_color_manual(values = c('lightblue3','lightblue4'))+
+  theme_bw() + 
+  theme(panel.grid.major.y = element_blank(),,
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+data_interaction_lunch_class <- data_clean %>% 
+  group_by(lunch1,star1) %>% 
+ summarize(
+    Mean = mean(math1))
+
+p3 <- ggplot(data_interaction_lunch_class, aes(x = star1, y = Mean, color = lunch1, group = lunch1)) +
+  geom_point(size = 2) +           
+  geom_line(size = 1) +            
+  labs(title = "(ii) Class Type & Lunch Type",
+       x = "Class Type",
+       y = "Mean Score",
+       color = "Lunch Type") + 
+  scale_color_manual(values = c('lightblue3','lightblue4'))+
+  theme_bw() + 
+  theme(panel.grid.major.y = element_blank(),,
+        plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+p1 / p2 / p3 +
+  plot_annotation(title = "Fig5.2 Interaction Check") & 
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+***Fig5.2*** demonstrates the lines in each subplot representing that
+different class types and lunch types show approximately parallel trends
+across school IDs and class types., which means there is no strong
+pairwise interaction between class type ,school and lunch type . Thus
+the drop of interaction terms is reasonable.
+
+## Model Fitting
+
+### Model Coefficients
+
+```{r warning = FALSE, message= FALSE}
+data_anova <- data_group_lunch
+
+m_aov <- aov(Mean~star1+schoolid1+lunch1,data_anova)
+model_coeff <- m_aov$coefficients
+
+kable(model_coeff,col.names = c("Term", "Value"), caption = "Table5.1 Model Coefficients") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(1, bold = TRUE) %>% 
+  scroll_box(height = '400px')
+```
+
+-   **Intercept (490.77):** This represents the baseline of the response
+    variable `math1`, showing that mean math score of a group students
+    who are qualified for free lunch in the small class at school 112038
+    will be 490.77.
+-   **Class Type:** The two negative results (**Regular: -11.03,
+    Regular+Aide: -9.86**) represents that, holding school and lunch
+    type constant, no matter there is aide or not, the increase of the
+    class size leads to the drop of the mean math score. Notably, if
+    without aide, the decrease is even more severe.
+-   **School ID:** Due to presence of the large number of schools in
+    STAR Project, we get a long list of school coefficients. We can
+    conclude that mean math score varies in different school after
+    controlling for class type and lunch type. So it's worth reporting
+    the estimated coefficients for school IDs.
+-   **Lunch Type (Not Qualified: 20.05):** The positive coefficient
+    indicates that in one given class type of a certain school, the mean
+    math score of 1st grade of students who are qualified for free lunch
+    will be 20.05 lower compared with those not qualified.
+
+### F-Test
+
+To answer the first question that whether there is any differences in
+math scaled scores in 1st grade across class types, we can apply F-Test
+under a significance level $\alpha$ of 0.05. For F-Test, we do not need
+additional assumptions from ANOVA model. The hypotheses are as
+following: $$
+H_0: \alpha_i =0
+$$
+
+$$
+H_1: not\;all\;\alpha_i\;are\;0
+$$
+
+```{r warning = FALSE, message= FALSE}
+anova_result <- Anova(lm(Mean~star1+schoolid1+lunch1, data_anova), type=2)
+
+anova_df <- broom::tidy(anova_result)
+
+anova_df$term <- c("star1", "schoolid1", "lunch1", "Residuals")
+anova_df$p.value <- formatC(anova_df$p.value, format = "e", digits = 2)
+anova_df$p.value[anova_df$term == "star1"] <- cell_spec(anova_df$p.value[anova_df$term == "star1"], bold = TRUE)
+
+kable(anova_df, caption = "Table5.2 F Test Results (Type II)", escape = FALSE,format = "html", digits = 2) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(1, bold = TRUE)
+```
+
+From the test result (***Table5.2***), the small p-value for `star1`
+convinces us to reject our null hypothesis at the significance level of
+0.05. So we can draw a conclusion statistically that there is a
+significant difference in math scaled scores in 1st grade across class
+types which answers our first question.
+
+## Tukey's Range Test
+
+Tukey's Range Test is specially designed for comparing all possible
+pairwise differences between group means while controlling for multiple
+comparisons. We can employ the test under a significance level $\alpha$
+of 0.05 after we determined the impact of class type in order to answer
+the second question: which class type is associated with the highest
+math scaled scores in 1st grade.
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+t <- TukeyHSD(aov(Mean ~ star1, data_anova),ordered = TRUE)
+tukey_result <- as.data.frame(t$star1)
+tukey_result$classtype <- row.names(tukey_result)
+ggplot(tukey_result, aes(x = classtype, y = diff)) +
+  geom_pointrange(aes(ymin = lwr, ymax = upr), lwd =1.5, size = 0.7, col = "lightblue4")+
+   geom_hline(yintercept=0, linetype='longdash', col = 'azure3', lwd =1) +
+  labs(x = "Class Type",
+       y = "Difference in Mean",
+       title = "Fig2.3 95% Familiy-Wise Confidence Interval of Difference in Mean") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+
+
+```
+
+We can obtain two key points from ***Fig5.3*** that, at the significance
+level of 0.05:
+
+-   0 falls in the interval of regular+aide and regular, showing that
+    whether or not there is teacher aide does not have a significant
+    impact on students' math score.
+-   The intervals of small and regular/regular+aide are all positive,
+    indicating that small class size does have a positively significant
+    impact on the mean math score comparing to regular class size and
+    will lead to the highest math scaled scores in 1st grade.
+
+## Deviation from Initial Report
+
+In the initial report, we only fit a two-way ANOVA with class type and
+school ID. The main improvement we made for the final report is that we
+add an additional main effect `lunch1` to better extract the variance
+caused by socioeconomic differences as evidenced by increase of the
+F-statistics of both `star1` and `schoolid1` (See ***Table5.2*** and
+***Appendix Table3***).
+
+## Causal Effects
+
+From the analysis above, we can draw a conclusion that there is a
+statistically significant difference in math scaled scores in 1st grade
+across class types and the small class can benefit students most. The
+within-school random assignment of students ensures that though students
+are in different class type, their backgrounds can be regarded as
+comparable.
+
+Meanwhile, despite of the primary focus - class type, students' math
+performance can also be affected by other causal factors such as schools
+and household income level.By including the school ID and lunch type in
+our final model, it helps to build the causal claim that smaller class
+size can improve mean math score at 1st grade since they extract other
+sources of variation.
+
+However,it is crucial to mention that the causal effects of class size
+in the STAR project relies heavily on the controlled randomized design.
+Hence, the annual enrollment of new students and the transfer of
+students across all class types may negatively affect the randomization
+thereby weaken the strength of causal effects.
+
+# Sensitivity Analysis
+
+In this section, we will verify those assumptions made in the
+Inferential Analysis part.
+
+## Independence Assumption
+
+Checking the scatter of fitted value and residuals in ***Fig6.1 (i)***,
+we can observe a random distribution for all dots and conclude that the
+independence assumption is satisfied.
+
+## Normality Assumption
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+data_aov <- data.frame(
+  fit = fitted(m_aov),
+  res = residuals(m_aov)
+)
+
+p1 <- ggplot(data_aov, aes(x = fit, y = res)) +
+  geom_point(col = "lightblue4") +
+  geom_hline(yintercept = 0, color = "darkslategray", linetype = "dashed") +
+  labs(title = "(i) Fitted Value V.S. Residuals",
+       x = "Fitted Value",
+       y = "Residuals") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(data_aov, aes(sample = res)) +
+  stat_qq(col = "lightblue4") + 
+  stat_qq_line(color = "darkslategray", linetype = "dashed") + 
+  labs(title = "(ii) Q-Q Plot of Residuals",
+       x = "Theoretical Quantiles",
+       y = "Standardized Residuals") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+
+p1+ p2 +
+  plot_annotation(title = "Fig6 Sensitivity Analysis") & 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+From Q-Q plot in ***Fig6.1 (ii)***, we can find a slight thick-tail
+pattern, suggesting potential deviations from normality, which leads us
+to employ Shapiro-Wilk Test to make a clear conclusion about normality.
+The hypothesis is as following: $$
+H_0: the\;data\;is\;normally\;distributed
+$$
+
+```{r warning = FALSE, message= FALSE}
+shapiro_result <- shapiro.test(data_aov$res)
+
+shapiro_df <- data.frame(
+  Statistic = shapiro_result$statistic,
+  p_value = shapiro_result$p.value
+)
+
+kable(shapiro_df, format = "html", caption = "Table6.1 Shapiro-Wilk Test for Normality", digits = 4) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+The small p-value of the test (***Table6.1***) indicates that we can
+reject our $H_0$ to convince us the data is not normally distributed.
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center', include=FALSE}
+bc_result <- boxcox(m_aov,lambda = seq(-3, 1, by = 0.1))
+lambda <- bc_result$x[which.max(bc_result$y)]
+
+data_group_teacher_tf <- data_group_lunch %>% 
+  mutate(Mean_tf = (Mean^lambda-1)/lambda)
+
+```
+
+To deal with this problem, we try the Box-Cox transformation to adjust
+our original data. According to the Box-Cox Plot (See ***Appendix
+Fig2***), we set our $\lambda = -1.18$ and finish the transformation.
+The result based on the transformed data can remain consistent with our
+original conclusions. Therefore, concerns regarding the normality
+assumption can be disregarded.
+
+```{r warning = FALSE, message= FALSE, fig.width=8, error = TRUE}
+anova_result <- Anova(lm(Mean_tf~star1+lunch1+schoolid1, data_group_teacher_tf), type=2)
+
+anova_df <- broom::tidy(anova_result)
+
+anova_df$term <- c("star1", "schoolid1", "lunch1", "Residuals")
+anova_df$p.value <- formatC(anova_df$p.value, format = "e", digits = 2)
+anova_df$sumsq <- formatC(anova_df$sumsq, format = "e", digits = 2)
+
+kable(anova_df, caption = "Table6.2 F Test Results (Type II)", escape = FALSE,format = "html", digits = 2) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(1, bold = TRUE)
+```
+
+## Homoscedasticity Assumption
+
+Based on the random pattern in ***Fig6.1***, we can preliminarily
+conclude that the homoscedasticity assumption is held. To more
+rigorously validate it, we apply Levene Test and the hypothesis is as
+following: $$
+H_0: the\;variances\;of\;all\;groups\;are\;equal
+$$
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+levene_result <-leveneTest(Mean ~ star1 * schoolid1 * lunch1, data_group_lunch)
+
+levene_df <- as.data.frame(levene_result)
+
+colnames(levene_df) <- c("DF", "F value", "p.value")
+levene_df$p.value <- formatC(levene_df$p.value, format = "e", digits = 2)
+
+kable(levene_df[1,], format = "html", caption = "Table6.3 Levene's Test for Homogeneity of Variance",digits = 2) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  column_spec(4, bold = TRUE)
+```
+
+The test result (***Table6.3***) overturns our preliminary conclusion as
+we reject our $H_0$ and conclude that not all variances across groups
+are equal due to the small p-value. This violation may result from the
+huge differences between schools shown in ***Fig4.3 (ii)*** which will
+increase the variances between groups dramatically.
+
+Though we cannot verify the homoscedasticity assumption, it's still not
+a severe problem since ANOVA model is fairly robust to heterogeneity of
+variance when it is a balanced design which our model satisfies.
+
+# Further Analysis
+
+Furthermore, since we have already examined the mean math score across
+different class types in **Inferential Analysis** section, we are also
+curious about the the variance of the math score in each class type.
+A higher mean score in small classes can indicate an overall improvement of math score, but
+understanding the variance reveals whether the benefit is distributed evenly among all students.
+For instance, if the variance is high, we can consider only a small subset of students can get the advantage from small class, which is the symbol of inequalities within class. Hence, the analysis of variance is an essential complement to the previous analysis.
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+summary_table <- data_clean %>%
+  group_by(star1) %>%
+  summarise(Std = sd(math1),
+            Variance = var(math1))
+
+kable(summary_table, caption = "Table7.1 Variance Statistics by Class Type") %>%
+  kable_styling(full_width = FALSE)
+
+```
+
+Grouping students just by class type level, we observe from
+***Table7.1*** that the small class shows the largest variance, while
+regular class shows the smallest one. To statistically determine the
+difference, we conduct a Levene test and the result in ***Table7.2***
+indicates that under the significance level of 0.05, we can reject its
+null hypothesis and conclude the existence of difference of variation
+between class types as the p-value is very small.
+
+This could be explained by the fact that smaller class sizes allows more
+individualized teaching, which may amplify the differences between
+students. Since increased teacher-student interactions in smaller
+classes can lead to varying degrees of responsiveness among students
+with different learning capabilities and motivations (Blatchford,
+Bassett, & Brown, 2003), those 'good' students benefit more from
+targeted instructional strategies while the advantages of small class
+for academically struggling students cannot compensate for their
+weakness and challenges thus increasing the discrepancy of math score in
+one class (Finn & Achilles, 1999).
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+levene_result <- leveneTest(math1 ~ star1, data = data_clean , center = mean)
+
+levene_df <- as.data.frame(levene_result)
+
+colnames(levene_df) <- c("DF", "F value", "p.value")
+levene_df$p.value <- formatC(levene_df$p.value, format = "e", digits = 2)
+
+kable(levene_df[1,], format = "html", caption = "Table7.2 Levene's Test for Homogeneity of Variance",digits = 2) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  column_spec(4, bold = TRUE)
+```
+
+# Discussion
+
+Throughout the report, we carefully considered three possible variables
+(`star1`, `schoolid1` and `lunch1`) that will significantly affect mean
+math score in 1st grade and employed a three-way ANOVA to answer two
+questions related to class types. The answers are as following:
+
+1.  There are differences in math scaled scores in 1st grade across
+    class types due to the F test.
+2.  Small class type is associated with the highest math scaled scores
+    in 1st grade due to the Tukey's range test.
+
+We also investigated the variance across different class type and
+concluded that though small class can help increase the average
+performance of students, it would enlarge the disparity between students
+within a class.
+
+Based on our current findings, we can share some suggestions for
+policymakers:
+
+1.  Given the clear positive impact of smaller classes on math
+    performance, policymakers should prioritize smaller class sizes to
+    enhance the overall performance of students in early grades.
+2.  Policymakers should train teachers to focus more on low-achieving
+    students or make specially designated programs for them to
+    compensate for the amplified performance disparities observed in
+    small classes.
+
+However, there still remains limitation as the experiment is only
+conducted in Tennessee in late 1980s. It lacked the generality of
+students and teachers like ethnicity in a modern context. Additionally,
+our analysis only focused on the 1st grade and didn't check the long-run
+effect of the class size through middle school, high school or even
+higher education which can be a future research point.
+
+# Acknowledgement {.unnumbered}
+
+Thank you for my friend Dae Hyeun (Issac) Cheong for his advice and
+hints on this report. Appreciation for my friends Shang Chen and Junwon
+Choi as we discussed for our own thoughts and frameworks.
+
+# Reference {.unnumbered}
+
+1.  Finn, J. D., & Achilles, C. M. (1999). Tennessee’s class size study:
+    Findings, implications, misconceptions. *Educational Evaluation and
+    Policy Analysis*, 21(2), 97–109.
+    <https://doi.org/10.3102/01623737021002097>
+2.  Mosteller, F. (1995). The Tennessee study of class size in the early
+    school grades. *The Future of Children*, 5(2), 113-127.
+    <https://doi.org/10.2307/1602360>
+3.  Achilles, C. M. (2012). Class-size policy: The STAR experiment and
+    related class-size studies. *NCPEA Policy Brief*, 1(2), 1–9.
+    <https://files.eric.ed.gov/fulltext/ED540485.pdf>
+4.  Krueger, A. B. (1999). Experimental estimates of education
+    production functions. *The Quarterly Journal of Economics, 114*(2),
+    497-532. <https://doi.org/10.1162/003355399556061>
+5.  Hanushek, E. A. (1999). Some findings from an independent
+    investigation of the Tennessee STAR experiment and from other
+    investigations of class size effects. Educational Evaluation and
+    Policy Analysis, 21(2), 143-163.
+    <https://doi.org/10.3102/01623737021002143>
+6.  Sirin, S. R. (2005). Socioeconomic status and academic achievement:
+    A meta-analytic review of research. *Review of Educational Research,
+    75*(3), 417-453. <https://doi.org/10.3102/00346543075003417>
+7.  Blatchford, P., Bassett, P., & Brown, P. (2005). Teachers' and
+    pupils' behavior in large and small classes: A systematic
+    observation study of pupils aged 10 and 11 years. *Journal of
+    Educational Psychology, 97*(3), 454–467.
+    <https://doi.org/10.1037/0022-0663.97.3.454>​
+
+# Appendix {.unnumbered}
+
+### Fig1 {.unnumbered .unlisted}
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+p1 <- ggplot(data_group_teacher,aes(x = star1)) + 
+  geom_histogram(stat="count", fill = "azure3", color = "lightblue4") +
+  labs(x = 'Class Type', y = 'Count', title = '(i) Class Type') +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(data_group_teacher,aes(x = schoolid1)) + 
+  geom_histogram(stat="count", fill = "azure3", color = "lightblue4") +
+  labs(x = 'School ID', y = 'Count', title = '(ii) School ID') +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1)),breaks = seq(0, 13, by = 2)) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off",
+        plot.title = element_text(hjust = 0.5)) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+
+p1  /
+  p2 +
+  plot_annotation(title = "Fig1 Distribution of Variables") & 
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+### Table1 {.unnumbered .unlisted}
+
+```{r warning = FALSE, message= FALSE, fig.width=8}
+data_group_teacher %>%
+  group_by(schoolid1) %>%
+  summarise(
+    Class_num = sum(!is.na(Mean)),
+    Mean = mean(Mean, na.rm = TRUE), 
+    Min =  min(Mean, na.rm = TRUE),
+    Quantile25 = quantile(Mean, 0.25, na.rm = TRUE),
+    Median = quantile(Mean, 0.5, na.rm = TRUE),
+    Quantile75 = quantile(Mean, 0.75, na.rm = TRUE),
+    Max = max(Mean, na.rm = TRUE),
+    .groups = "drop" 
+  ) %>% 
+  head(5) %>% 
+  kable(caption = "Table1.2 Summary Measures of Mean Math Score of Classes for a Certain School") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(1, bold = TRUE)
+
+```
+
+### Table2 {.unnumbered .unlisted}
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+data_group_teacher_bg$residuals <- resid(model_base)
+
+model_residual <- lm(residuals ~ tgender1 + tethnicity1 + degree1 + ladder1 + experience1, data = data_group_teacher_bg)
+
+coef_table <- summary(model_residual)$coefficients
+
+p_value_df <- data.frame(
+  Variable = rownames(coef_table),
+  p_value = coef_table[, "Pr(>|t|)"]
+)
+
+r2_df <- data.frame(
+  Variable = c("R-squared", "Adjusted R-squared"),
+  p_value = c(summary(model_residual)$r.squared, summary(model_residual)$adj.r.squared)
+)
+
+p_value_df <- rbind(p_value_df, r2_df)
+
+rownames(p_value_df) <- NULL
+
+p_value_df$Variable <- ifelse(p_value_df$Variable %in% c("R-squared", "Adjusted R-squared"),
+                              cell_spec(p_value_df$Variable, bold = TRUE),
+                              p_value_df$Variable)
+
+kable(p_value_df, format = "html", escape = FALSE,caption = "Table2 p-values and Model Fit Statistics between Residuals of Base Model and Teacher Backgrounds",digits = 2) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+### Table3 {.unnumbered .unlisted}
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+anova_result <- Anova(lm(Mean~star1+schoolid1, data_anova), type=2)
+
+anova_df <- broom::tidy(anova_result)
+
+anova_df$term <- c("star1", "schoolid1", "Residuals")
+anova_df$p.value <- formatC(anova_df$p.value, format = "e", digits = 2)
+anova_df$statistic <- formatC(anova_df$statistic, digits = 3)
+
+anova_df$statistic[anova_df$term == "star1"] <- cell_spec(anova_df$statistic[anova_df$term == "star1"], bold = TRUE)
+anova_df$statistic[anova_df$term == "schoolid1"] <- cell_spec(anova_df$statistic[anova_df$term == "schoolid1"], bold = TRUE)
+
+kable(anova_df, caption = "Table3 F Test Results of Initial Report (Type II)", escape = FALSE,format = "html", digits = 2) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(1, bold = TRUE)
+```
+
+### Fig2 {.unnumbered .unlisted}
+
+```{r warning = FALSE, message= FALSE, fig.width=8, fig.align='center'}
+bc_result <- boxcox(m_aov,lambda = seq(-3, 1, by = 0.1))
+title(main = "Fig2 Box-Cox Transformation for Lambda Selection")
+lambda <- bc_result$x[which.max(bc_result$y)]
+
+data_group_teacher_tf <- data_group_lunch %>% 
+  mutate(Mean_tf = (Mean^lambda-1)/lambda)
+```
+
+# Session info {.unnumbered}
+
+```{r}
+sessionInfo()
+```
